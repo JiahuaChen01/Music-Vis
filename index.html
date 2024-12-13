@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Project Two</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://d3js.org/topojson.v3.min.js"></script>
+
+    <style>
+
+      .title-container {
+        display: flex;
+        width: 1375px;
+        flex-direction: column;
+        justify-content: center;
+        text-align: center;
+
+        .title {
+          margin: 0;
+          padding-top: 30px;
+          padding-bottom: 8px;
+        }
+        .subtitle {
+          margin: 0;
+          max-width: 1000px;
+          align-self: center;
+          font-weight: normal;
+          color: #555555;
+          padding: 5px;
+          margin-bottom: 4px;
+        }
+      }
+
+      .disclaimer {
+        margin: 0;
+        color: #555555;
+
+        .title {
+          color: red;
+        }
+      }
+
+      .filter-container {
+        position: absolute;
+        flex-direction: column;
+        display: flex;
+        justify-content: center;
+        left: 875px;
+        top: 425px;
+        width: 450px;
+        height: 250px;
+        padding: 10px;
+        border-radius: 10px;
+        box-shadow: 0 2px 3px rgba(0, 0, 0, 0.4);
+      }
+
+      .filters-title {
+        margin: 0;
+      }
+
+      .genre-filter {
+        display: flex;
+        padding-left: 5px;
+        flex-direction: column;
+        margin-top: 10px;
+      }
+
+      .genre-button {
+        padding: 5px;
+        margin: 3px;
+      }
+
+      .slider-container {
+        padding-left: 5px;
+        margin-top: 10px;
+        justify-content: center;
+      }
+
+      .slider {
+        padding-top: 10px;
+        padding-left: 15%;
+      }
+
+      svg#map {
+        position: absolute;
+        left: 50px;
+        top: 200px;
+        background-color: #f2f2f2;
+        border-radius: 15px;
+      }
+
+      .artist-card {
+        position: absolute;
+        display: flex;
+        justify-content: center;
+        align-items: center; /* Keep these two just for the "No artists selected" text */
+        flex-direction: column;
+        top: 200px;
+        left: 875px;
+        width: 450px;
+        height: 190px;
+        padding: 10px;
+        background-color: #e0e0e0;
+        box-shadow: 0 2px 3px rgba(0, 0, 0, 0.4);
+
+        border-radius: 10px;
+
+        p {
+          margin: 0;
+        }
+      }
+
+      .artist-info {
+        display: flex;
+        flex-direction: row;
+      }
+
+      .text-box {
+        height: 115px;
+        display: flex;
+        justify-content: center;
+        flex-direction: column;
+        max-width: 315px;
+        word-wrap: break-word;
+        overflow-wrap: break-word;
+        white-space: normal;
+      }
+
+      .artist-image {
+        width: 115px;
+        height: 115px;
+        border-radius: 8px;
+        margin-right: 10px;
+      }
+
+      .spotify-logo {
+        position: absolute;
+        bottom: 10px;
+        right: 10px;
+        width: 35px;
+        aspect-ratio: 1;
+        cursor: pointer;
+        transition: transform 0.1s ease-in-out;
+
+        &:hover {
+          transform: scale(1.1);
+        }
+      }
+
+      .artist-name {
+        font-weight: bold;
+        font-size: 18px;
+      }
+
+      .top-track-title {
+        padding-top: 10px;
+        font-weight: bold;
+      }
+
+      .audio-player {
+        position: absolute;
+        left: 885px;
+        top: 357px;
+        color: black;
+        height: 45px;
+      }
+
+      .genre-button.selected {
+        background-color: #d8d1d1; 
+        font-weight: bold;     
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="title-container">
+      <h1 class="title">
+        Project Two: Visualizing Artist Locations
+      </h1>
+      <h3 class="subtitle">
+        Find out where artists are from with this interactive visualization. Zoom and pan across the map to
+        explore artist locations, filter by genre and popularity, and select individual points to discover
+        more about an artist such as their top track, their hometown, and gain access their Spotify profile.
+      </h3>
+      <h4 class="disclaimer">
+        <span class="title">**WARNING: </span>
+        Some artists may not be appropriate for all audiences due to explicit content whether visual or audible.
+      </h4>
+
+    </div>
+
+    <div class="filter-container">
+      <h3 class="filters-title">Filters</h3>
+      <div class="genre-filter">
+        <div>Genres</div>
+        <div id="button"></div>
+      </div>
+      <div class="slider-container">
+        <div>Popularity Score</div>
+        <svg class="slider" id="slider" width="280" height="40"></svg>
+      </div>
+    </div>
+
+    <svg id="map" width="800" height="500"></svg>
+    <div class="artist-card">
+      <p>No artists selected.</p>
+    </div>
+
+
+
+    <audio controls class="audio-player" style="display: none"></audio>
+
+
+    <script>
+      const svg = d3.select("svg#map");
+      const width = +svg.attr("width");
+      const height = +svg.attr("height");
+
+      const projection = d3
+        .geoAlbersUsa()
+        .scale(1000)
+        .translate([width / 2, height / 2]);
+
+      const path = d3.geoPath().projection(projection);
+
+      const g = svg.append("g");
+
+      const zoom = d3
+        .zoom()
+        .scaleExtent([1, 8])
+        .translateExtent([
+          [0, 0],
+          [width, height],
+        ])
+        .on("zoom", zoomed);
+
+      svg.call(zoom);
+
+      function zoomed(event) {
+        g.attr("transform", event.transform);
+        const zoomLevel = event.transform.k;
+        g.selectAll("circle").attr("r", Math.max(2 / zoomLevel, 0.5));
+      }
+
+      // Load map
+      d3.json("usGeo.json").then((data) => {
+        g.selectAll("path")
+          .data(data.features)
+          .enter()
+          .append("path")
+          .attr("d", path)
+          .attr("fill", "#a8e6a1")
+          .attr("stroke", "black")
+          .attr("stroke-width", 0.2);
+
+        // Load artist data
+        d3.json("artist_data.json").then((data) => {
+          console.log(data);
+
+          // Convert popularity score to numbers
+          data.forEach(
+            (d) => (d["spotify_popularity"] = Number(d["spotify_popularity"]))
+          );
+
+          // Max & min of popularity score
+          console.log(d3.extent(data, (d) => d.spotify_popularity));
+
+          var filters = {};
+
+          function pointPassesFilters(d) {
+            let stillPassed = true;
+
+            Object.values(filters).forEach((filterFunc) => {
+              stillPassed = filterFunc(d) && stillPassed;
+            });
+
+            return stillPassed;
+          }
+
+          function updateArtists(data) {
+            const zoomLevel = d3.zoomTransform(svg.node()).k;
+            data = data.filter((d) => pointPassesFilters(d));
+
+            let circles = g
+              .selectAll("circle.point")
+              .data(data)
+              .join("circle")
+              .attr("class", "point")
+              .attr("cx", (d) => {
+                const coords = projection([+d.longitude, +d.latitude]);
+                return coords ? coords[0] : null;
+              })
+              .attr("cy", (d) => {
+                const coords = projection([+d.longitude, +d.latitude]);
+                return coords ? coords[1] : null;
+              })
+              .attr("r", Math.max(2 / zoomLevel, 0.5))
+              .attr("fill", "royalblue")
+              .attr('fill-opacity', 0.8)
+              .on("mouseover", function (event, d) {
+                const zoomLevel = d3.zoomTransform(svg.node()).k;
+                d3.select(this)
+                  .attr("fill", "gold")
+                  .attr("r", Math.max(2 / zoomLevel, 0.5) * 1.5)
+                  .style("cursor", "pointer");
+              })
+              .on("mouseout", function (event, d) {
+                const zoomLevel = d3.zoomTransform(svg.node()).k;
+                d3.select(this)
+                  .attr("fill", "royalblue")
+                  .attr("r", Math.max(2 / zoomLevel, 0.5));
+              })
+              .on("click", function (event, d) {
+                let artistCard = d3
+                  .select(".artist-card")
+                  .style("justify-content", "flex-start")
+                  .style("align-items", "flex-start");
+
+                // Reset the content of the artist card
+                artistCard.html("");
+
+                let artistInfo = artistCard
+                  .append("div")
+                  .attr("class", "artist-info");
+
+                artistInfo
+                  .append("img")
+                  .attr("class", "artist-image")
+                  .attr("src", d.spotify_image);
+
+                artistCard
+                  .append("img")
+                  .attr("class", "spotify-logo")
+                  .attr("src", "./spotify_icon.png")
+                  .attr("alt", "spotify logo")
+                  .on("click", () =>
+                    window.open(
+                      `https://open.spotify.com/artist/${d.spotify_id}`,
+                      "_blank"
+                    )
+                  );
+
+                let textBox = artistInfo
+                  .append("div")
+                  .attr("class", "text-box");
+
+                textBox
+                  .append("p")
+                  .attr("class", "artist-name")
+                  .text(d["artist_name"]);
+
+                textBox
+                  .append("p")
+                  .attr("class", "artist-genre")
+                  .text(`#${d["artist_genres"]}`);
+
+                textBox
+                  .append("p")
+                  .attr("class", "artist-city")
+                  .text(`${d["city_name"]}, ${d["state_code"]}`);
+
+                textBox
+                  .append("p")
+                  .attr("class", "artist-city")
+                  .text(`Popularity Score: ${d["spotify_popularity"]} / 100`);
+
+                artistCard
+                  .append("p")
+                  .attr("class", "top-track-title")
+                  .text("Top track:");
+
+                d3.select(".audio-player")
+                  .attr("src", d.spotify_top_track_preview)
+                  .style("display", "block");
+              });
+          }
+
+          updateArtists(data);
+
+          // Popularity slider
+          let filterFunc = (d) => true;
+          filters["spotify_popularity"] = filterFunc;
+
+          const slidersvg = d3.select("svg#slider");
+          const sliderWidth = slidersvg.attr("width");
+          const sliderHeight = slidersvg.attr("height");
+
+          let xScale = d3
+            .scaleLinear()
+            .domain([0, 90])
+            .range([10, sliderWidth - 10]);
+          let xAxis = d3.axisBottom(xScale).tickFormat(d3.format(".2s"));
+
+          slidersvg
+            .append("g")
+            .attr("transform", `translate(0, ${sliderHeight - 20})`)
+            .call(xAxis);
+
+          var brush = d3
+            .brushX()
+            .extent([
+              [10, 0],
+              [sliderWidth - 10, 20],
+            ])
+            .on("brush end", brushMoved);
+
+          function brushMoved(event) {
+            if (event.selection != null) {
+              let start = xScale.invert(event.selection[0]);
+              let end = xScale.invert(event.selection[1]);
+
+              let filterFunc = (d) =>
+                d["spotify_popularity"] >= start &&
+                d["spotify_popularity"] <= end;
+              filters["spotify_popularity"] = filterFunc;
+
+              updateArtists(data);
+            }
+            else {
+
+            let filterFunc = d => true;
+            filters["spotify_popularity"] = filterFunc;
+
+            updateArtists(data);
+            }
+          }
+
+          slidersvg.append("g").attr("class", "brush").call(brush);
+
+          //genres filter
+          const genres = [
+            "All Genres",
+            "R&B",
+            "Alternative / Indie",
+            "Rock",
+            "Pop",
+            "Hip Hop / Rap",
+            "Electronic",
+            "Jazz / Blues",
+            "Classical",
+            "Metal",
+            "Country / Folk",
+          ];
+
+          let selectedGenre = "All Genres";
+
+          const buttonContainer = d3.select("div#button");
+
+          genres.forEach((genre) => {
+            buttonContainer
+              .append("button")
+              .attr("class", "genre-button")
+              .text(genre)
+              .on("click", function() {
+                selectedGenre = genre;
+
+                if (selectedGenre === "All Genres") {
+                  filters["genre"] = (d) => true;
+                } else {
+                  filters["genre"] = (d) =>
+                    d.artist_genres.includes(selectedGenre);
+                }
+
+                updateArtists(data);
+
+                d3.selectAll(".genre-button").classed("selected", false); 
+                d3.select(this).classed("selected", true); 
+              });
+          });
+        });
+      });
+    </script>
+
+
+    <!----- Filtering our Data ----->
+    <script>
+      //   /*d3.tsv("artist_data.tsv").then(data => {
+      //         const genreConversion = [
+      //             {keywords: ["r&b", "rnb"], category: "R&B"},
+      //             {keywords: ["indie", "alternative"], category: "Alternative / Indie"},
+      //             {keywords: ["rock", "punk"], category: "Rock"},
+      //             {keywords: ["pop", "synth", "dance"], category: "Pop"},
+      //             {keywords: ["hip hop", "rap", "trap"], category: "Hip Hop / Rap"},
+      //             {keywords: ["electronic", "techno", "house", "edm"], category: "Electronic"},
+      //             {keywords: ["jazz", "blues", "soul"], category: "Jazz / Blues"},
+      //             {keywords: ["classical", "orchestral", "opera"], category: "Classical"},
+      //             {keywords: ["metal", "core"], category: "Metal"},
+      //             {keywords: ["country", "folk", "americana"], category: "Country / Folk"}
+      //         ];
+
+      //         let filteredArtists = data.map(artist => {
+      //             let genres = artist.artist_genres.toLowerCase();
+      //             let matchedGenre = null;
+
+      //             genreConversion.forEach(genreConversion => {
+      //                 genreConversion.keywords.forEach(keyword => {
+      //                     if (matchedGenre == null && genres.includes(keyword))
+      //                         matchedGenre = genreConversion.category
+      //                 })
+      //             })
+
+      //             if (matchedGenre === null) {
+      //                 return null; //Filter these out later
+      //             } else {
+      //                 artist.artist_genres = matchedGenre;
+      //                 return artist;
+      //             }
+      //         }).filter(artist => artist !== null);
+
+      //         console.log(filteredArtists);
+      //         console.log(JSON.stringify(filteredArtists));
+      //     });*/
+    </script>
+  </body>
+
+</html>
